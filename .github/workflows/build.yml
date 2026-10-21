@@ -70,7 +70,7 @@ jobs:
           retention-days: 7
 
   release:
-    if: startsWith(github.ref, 'refs/tags/') && github.repository == 'Niek/php7'
+    if: startsWith(github.ref, 'refs/tags/') && github.repository == 'tweis/php-sury-backport'
     needs: build
     runs-on: ubuntu-latest
     permissions:

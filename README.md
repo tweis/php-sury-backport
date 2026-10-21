@@ -1,6 +1,6 @@
 # PHP 7.4, 8.0 and 8.1 security backports for old Ubuntu and Debian
 
-[![Build](https://github.com/Niek/php7/actions/workflows/build.yml/badge.svg)](https://github.com/Niek/php7/actions/workflows/build.yml)
+[![Build](https://github.com/tweis/php-sury-backport/actions/workflows/build.yml/badge.svg)](https://github.com/tweis/php-sury-backport/actions/workflows/build.yml)
 
 **Still running PHP 7.4, 8.0 or 8.1 on an old Ubuntu or Debian server?** These drop-in `.deb`
 packages patch two critical remote code execution bugs,
@@ -26,7 +26,7 @@ Back up your PHP configuration first, set `php` to the version you run
 php=7.4
 target=$(. /etc/os-release; echo "$ID$VERSION_ID")
 cd "$(mktemp -d)"
-curl -fL "https://github.com/Niek/php7/releases/latest/download/php$php-$target-amd64.tar.xz" -o php.tar.xz
+curl -fL "https://github.com/tweis/php-sury-backport/releases/latest/download/php$php-$target-amd64.tar.xz" -o php.tar.xz
 tar -xJf php.tar.xz
 sha256sum -c SHA256SUMS
 sudo apt install --only-upgrade ./*.deb
@@ -54,9 +54,9 @@ When it finishes, restart PHP-FPM, Apache or any other long-running PHP process.
 ## How it's built
 
 GitHub Actions downloads the pinned Sury source
-([7.4](https://github.com/Niek/php7/releases/latest/download/php7.4-source.tar.xz),
-[8.0](https://github.com/Niek/php7/releases/latest/download/php8.0-source.tar.xz),
-[8.1](https://github.com/Niek/php7/releases/latest/download/php8.1-source.tar.xz)),
+([7.4](https://github.com/tweis/php-sury-backport/releases/latest/download/php7.4-source.tar.xz),
+[8.0](https://github.com/tweis/php-sury-backport/releases/latest/download/php8.0-source.tar.xz),
+[8.1](https://github.com/tweis/php-sury-backport/releases/latest/download/php8.1-source.tar.xz)),
 verifies it against `sources.sha256`, then builds it in Docker for each PHP version and release
 using that release's own libraries. Sury's packaging (extensions, FPM config and
 services) is kept as-is. `build.sh` only adjusts what older toolchains need.
