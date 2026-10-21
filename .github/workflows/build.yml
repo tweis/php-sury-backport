@@ -2,7 +2,6 @@ name: Build PHP
 on:
   push:
     branches: [main]
-    tags: ['v*']
   pull_request:
   workflow_dispatch:
 
@@ -14,7 +13,7 @@ defaults:
     shell: bash
 
 env:
-  REVISION: '1'
+  REVISION: '2'
   SOURCE_URL: https://packages.sury.org/php/pool/main/p
 
 jobs:
@@ -70,42 +69,62 @@ jobs:
           retention-days: 7
 
   release:
-    if: startsWith(github.ref, 'refs/tags/') && github.repository == 'tweis/php-sury-backport'
+    if: github.ref == 'refs/heads/main' && github.repository == 'tweis/php-sury-backport'
     needs: build
     runs-on: ubuntu-latest
     permissions:
       contents: write
+    strategy:
+      fail-fast: false
+      matrix:
+        php: ['7.4', '8.0', '8.1']
     steps:
       - uses: actions/checkout@v7
         with:
           persist-credentials: false
-      - uses: actions/download-artifact@v8
-        with:
-          path: artifacts
-          pattern: php*-amd64
-      - name: Upload release packages and source
+      - name: Skip if this version is already released
+        id: check
         env:
           GH_TOKEN: ${{ github.token }}
-          TAG: ${{ github.ref_name }}
+          PHP: ${{ matrix.php }}
         run: |
-          test "$TAG" = "v$REVISION"
+          upstream=$(sed -n "s/.*  php${PHP}_\([0-9.]*\)\.orig\.tar\.xz$/\1/p" sources.sha256)
+          tag="v$upstream-$REVISION"
+          echo "upstream=$upstream" >> "$GITHUB_OUTPUT"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "$tag already released; bump REVISION to publish."
+          else
+            echo "publish=true" >> "$GITHUB_OUTPUT"
+          fi
+      - uses: actions/download-artifact@v8
+        if: steps.check.outputs.publish
+        with:
+          path: artifacts
+          pattern: php${{ matrix.php }}-*-amd64
+      - name: Upload release packages and source
+        if: steps.check.outputs.publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PHP: ${{ matrix.php }}
+          UPSTREAM: ${{ steps.check.outputs.upstream }}
+          TAG: ${{ steps.check.outputs.tag }}
+        run: |
           mkdir release
           for dir in artifacts/*; do
             tar -cJf "release/$(basename "$dir").tar.xz" -C "$dir" .
-            cp "$dir"/*.deb release/
           done
+          grep -F "  php${PHP}_" sources.sha256 > sources.php
           while read -r _ file; do
-            curl -fsSL --retry 3 "$SOURCE_URL/${file%%_*}/$file" -o "release/$file"
-          done < sources.sha256
-          (cd release && sha256sum -c ../sources.sha256)
-          for php in $(awk '{print $2}' sources.sha256 | cut -d_ -f1 | sort -u); do
-            tar -cJf "release/$php-source.tar.xz" -C release --files-from <(grep -F "  ${php}_" sources.sha256 | awk '{print $2}')
-          done
+            curl -fsSL --retry 3 "$SOURCE_URL/php$PHP/$file" -o "release/$file"
+          done < sources.php
+          (cd release && sha256sum -c ../sources.php)
+          tar -cJf "release/php$PHP-source.tar.xz" -C release --files-from <(awk '{print $2}' sources.php)
           # GitHub normalizes tildes in asset names; match that before checksumming.
           for file in release/*~*; do
             [ ! -e "$file" ] || mv "$file" "${file//\~/.}"
           done
           (cd release && sha256sum ./* > SHA256SUMS)
-          gh release create "$TAG" --verify-tag --draft --title "PHP 7.4, 8.0 and 8.1 backports ($TAG)" --notes-file README.md
+          gh release create "$TAG" --target "$GITHUB_SHA" --draft --title "PHP $UPSTREAM backports ($TAG)" --notes-file README.md
           gh release upload "$TAG" release/*
           gh release edit "$TAG" --draft=false

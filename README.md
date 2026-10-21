@@ -26,13 +26,16 @@ Back up your PHP configuration first, set `php` to the version you run
 php=7.4
 target=$(. /etc/os-release; echo "$ID$VERSION_ID")
 cd "$(mktemp -d)"
-curl -fL "https://github.com/tweis/php-sury-backport/releases/latest/download/php$php-$target-amd64.tar.xz" -o php.tar.xz
+url=$(curl -fsSL https://api.github.com/repos/tweis/php-sury-backport/releases |
+  grep -o "https://[^\"]*/download/v$php\.[^/]*/php$php-$target-amd64\.tar\.xz" | head -1)
+curl -fL "$url" -o php.tar.xz
 tar -xJf php.tar.xz
 sha256sum -c SHA256SUMS
 sudo apt install --only-upgrade ./*.deb
 ```
 
-This detects your release (for example `ubuntu18.04` or `debian10`), checks
+This detects your release (for example `ubuntu18.04` or `debian10`), downloads
+the newest build for your PHP version, checks
 the package checksums, and upgrades only the packages of that PHP version you already have
 installed, including extensions, the Apache module and FPM. APT may install
 required dependencies. Review APT's proposed changes before accepting.
@@ -53,10 +56,9 @@ When it finishes, restart PHP-FPM, Apache or any other long-running PHP process.
 
 ## How it's built
 
-GitHub Actions downloads the pinned Sury source
-([7.4](https://github.com/tweis/php-sury-backport/releases/latest/download/php7.4-source.tar.xz),
-[8.0](https://github.com/tweis/php-sury-backport/releases/latest/download/php8.0-source.tar.xz),
-[8.1](https://github.com/tweis/php-sury-backport/releases/latest/download/php8.1-source.tar.xz)),
+GitHub Actions downloads the pinned Sury source (attached to each
+[release](https://github.com/tweis/php-sury-backport/releases) as
+`php<version>-source.tar.xz`),
 verifies it against `sources.sha256`, then builds it in Docker for each PHP version and release
 using that release's own libraries. Sury's packaging (extensions, FPM config and
 services) is kept as-is. `build.sh` only adjusts what older toolchains need.
@@ -65,9 +67,11 @@ The PHP test suite is not run.
 ### Releasing
 
 Every push and pull request builds all PHP versions for all releases. To
-publish, set `REVISION` in `.github/workflows/build.yml` and push the matching
-tag, for example `v2`. The packages, build logs, checksums and source are attached to the
-GitHub release once all builds succeed.
+publish, bump `REVISION` in `.github/workflows/build.yml` or pin a new Sury
+source, and push to `main`. Once all builds succeed, each PHP version gets its
+own release, tagged `v<upstream version>-<REVISION>` (for example `v8.1.34-2`),
+with its packages, build logs, checksums and source. Versions whose tag already
+exists are skipped, so other pushes only build.
 
 ## Credits
 
