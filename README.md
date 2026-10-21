@@ -68,3 +68,9 @@ Every push and pull request builds all PHP versions for all releases. To
 publish, set `REVISION` in `.github/workflows/build.yml` and push the matching
 tag, for example `v2`. The packages, build logs, checksums and source are attached to the
 GitHub release once all builds succeed.
+
+## Credits
+
+Based on [Niek/php7](https://github.com/Niek/php7), which built the original
+PHP 7.4 backports. This fork adds PHP 8.0 and 8.1. Patches and packaging come
+from [Ondřej Surý's PHP packages](https://deb.sury.org/).
