@@ -27,8 +27,8 @@ apt-get install -y --no-install-recommends build-essential devscripts equivs dpk
 
 mkdir -p /build /out
 cd /sources
-sha256sum -c /repo/sources.sha256
-dpkg-source --no-check -x ./*.dsc /build/php
+grep -F "  php${PHP}_" /repo/sources.sha256 | sha256sum -c
+dpkg-source --no-check -x ./php"${PHP}"_*.dsc /build/php
 cd /build/php
 
 # The optional telemetry header uses newer libsodium APIs even when telemetry
@@ -42,7 +42,7 @@ sed -i 's/php-common (>= 1:81~)/php-common (>= 1:35)/g' debian/control debian/co
 if [ "$VERSION_ID" = 16.04 ]; then
   apt-get install -y --no-install-recommends -t xenial-backports debhelper
 fi
-# Use bundled PCRE2 where the distro predates PHP 7.4's required library API.
+# Use bundled PCRE2 where the distro predates PHP's required library API.
 pcre_version=$(apt-cache policy libpcre2-dev | awk '/Candidate:/ {print $2}')
 if dpkg --compare-versions "$pcre_version" lt 10.30; then
   sed -i '/libpcre2-dev (>= 10.30),/d' debian/control debian/control.in
@@ -59,7 +59,8 @@ sed -i 's/libtidy-dev (>= 1:5.2.0)/libtidy-dev/' debian/control debian/control.i
 export DEB_BUILD_OPTIONS="nocheck parallel=${JOBS:-4}"
 export DEB_BUILD_PROFILES=nocheck
 export DEBFULLNAME='php7 contributors' DEBEMAIL='noreply@github.com'
-dch --newversion "1:7.4.33-31+php7.${REVISION:-1}~${TARGET}.1" --distribution "$codename" \
+version=$(dpkg-parsechangelog -S Version)
+dch --newversion "${version%%+*}+php7.${REVISION:-1}~${TARGET}.1" --distribution "$codename" \
   'Rebuild Sury security backports for this distribution.'
 mk-build-deps --install --remove --tool 'apt-get -y --no-install-recommends' debian/control
 dpkg-buildpackage -us -uc -b -j"${JOBS:-4}"

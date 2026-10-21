@@ -1,8 +1,8 @@
-name: Build PHP 7.4
+name: Build PHP
 on:
   push:
     branches: [main]
-    tags: ['v7.4.33-*']
+    tags: ['v*']
   pull_request:
   workflow_dispatch:
 
@@ -15,62 +15,57 @@ defaults:
 
 env:
   REVISION: '1'
-  SOURCE_URL: https://packages.sury.org/php/pool/main/p/php7.4
+  SOURCE_URL: https://packages.sury.org/php/pool/main/p
 
 jobs:
   build:
+    name: php${{ matrix.php }}-${{ matrix.os.target }}
     runs-on: ubuntu-latest
     timeout-minutes: 120
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - target: ubuntu16.04
-            image: ubuntu:16.04
-          - target: ubuntu16.10
-            image: ubuntu:16.10
-          - target: ubuntu17.04
-            image: ubuntu:17.04
-          - target: ubuntu17.10
-            image: ubuntu:17.10
-          - target: ubuntu18.04
-            image: ubuntu:18.04
-          - target: ubuntu18.10
-            image: ubuntu:18.10
-          - target: ubuntu19.04
-            image: ubuntu:19.04
-          - target: ubuntu19.10
-            image: ubuntu:19.10
-          - target: ubuntu20.04
-            image: ubuntu:20.04
-          - target: debian9
-            image: debian:stretch
-          - target: debian10
-            image: debian:buster
+        php: ['7.4', '8.0', '8.1']
+        os:
+          - {target: ubuntu16.04, image: 'ubuntu:16.04'}
+          - {target: ubuntu16.10, image: 'ubuntu:16.10'}
+          - {target: ubuntu17.04, image: 'ubuntu:17.04'}
+          - {target: ubuntu17.10, image: 'ubuntu:17.10'}
+          - {target: ubuntu18.04, image: 'ubuntu:18.04'}
+          - {target: ubuntu18.10, image: 'ubuntu:18.10'}
+          - {target: ubuntu19.04, image: 'ubuntu:19.04'}
+          - {target: ubuntu19.10, image: 'ubuntu:19.10'}
+          - {target: ubuntu20.04, image: 'ubuntu:20.04'}
+          - {target: debian9, image: 'debian:stretch'}
+          - {target: debian10, image: 'debian:buster'}
     steps:
       - uses: actions/checkout@v7
         with:
           persist-credentials: false
       - name: Download pinned source
+        env:
+          PHP: ${{ matrix.php }}
         run: |
           mkdir sources out
+          grep -F "  php${PHP}_" sources.sha256 > sources/SHA256SUMS
           while read -r _ file; do
-            curl -fsSL --retry 3 "$SOURCE_URL/$file" -o "sources/$file"
-          done < sources.sha256
-          (cd sources && sha256sum -c ../sources.sha256)
+            curl -fsSL --retry 3 "$SOURCE_URL/php$PHP/$file" -o "sources/$file"
+          done < sources/SHA256SUMS
+          (cd sources && sha256sum -c SHA256SUMS)
       - name: Build native amd64 packages in Docker
         env:
-          TARGET: ${{ matrix.target }}
-          IMAGE: ${{ matrix.image }}
+          PHP: ${{ matrix.php }}
+          TARGET: ${{ matrix.os.target }}
+          IMAGE: ${{ matrix.os.image }}
         run: |
           docker run --rm --platform linux/amd64 \
             -v "$PWD:/repo:ro" -v "$PWD/sources:/sources:ro" -v "$PWD/out:/out" \
-            -e TARGET -e REVISION -e JOBS=4 "$IMAGE" bash /repo/build.sh 2>&1 | tee out/build.log
+            -e PHP -e TARGET -e REVISION -e JOBS=4 "$IMAGE" bash /repo/build.sh 2>&1 | tee out/build.log
           test -s out/SHA256SUMS
       - uses: actions/upload-artifact@v7
         if: always()
         with:
-          name: php7.4-${{ matrix.target }}-amd64
+          name: php${{ matrix.php }}-${{ matrix.os.target }}-amd64
           path: out/
           retention-days: 7
 
@@ -87,28 +82,30 @@ jobs:
       - uses: actions/download-artifact@v8
         with:
           path: artifacts
-          pattern: php7.4-*-amd64
+          pattern: php*-amd64
       - name: Upload release packages and source
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ github.ref_name }}
         run: |
-          test "$TAG" = "v7.4.33-$REVISION"
+          test "$TAG" = "v$REVISION"
           mkdir release
           for dir in artifacts/*; do
             tar -cJf "release/$(basename "$dir").tar.xz" -C "$dir" .
             cp "$dir"/*.deb release/
           done
           while read -r _ file; do
-            curl -fsSL --retry 3 "$SOURCE_URL/$file" -o "release/$file"
+            curl -fsSL --retry 3 "$SOURCE_URL/${file%%_*}/$file" -o "release/$file"
           done < sources.sha256
           (cd release && sha256sum -c ../sources.sha256)
-          tar -cJf release/php7.4-source.tar.xz -C release --files-from <(awk '{print $2}' sources.sha256)
+          for php in $(awk '{print $2}' sources.sha256 | cut -d_ -f1 | sort -u); do
+            tar -cJf "release/$php-source.tar.xz" -C release --files-from <(grep -F "  ${php}_" sources.sha256 | awk '{print $2}')
+          done
           # GitHub normalizes tildes in asset names; match that before checksumming.
           for file in release/*~*; do
             [ ! -e "$file" ] || mv "$file" "${file//\~/.}"
           done
           (cd release && sha256sum ./* > SHA256SUMS)
-          gh release create "$TAG" --verify-tag --draft --title "PHP 7.4.33 backports ($TAG)" --notes-file README.md
+          gh release create "$TAG" --verify-tag --draft --title "PHP 7.4, 8.0 and 8.1 backports ($TAG)" --notes-file README.md
           gh release upload "$TAG" release/*
           gh release edit "$TAG" --draft=false
